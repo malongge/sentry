@@ -4,7 +4,6 @@ from django import forms
 from django.conf import settings
 from django.core.urlresolvers import reverse
 from django.contrib.auth import logout
-from django.contrib.auth.models import AnonymousUser
 from django.http import (
     HttpResponse, HttpResponseRedirect, HttpResponseServerError,
     Http404, HttpResponseNotAllowed
@@ -391,19 +390,27 @@ class SAML2SLSView(AuthView):
         if provider is None:
             raise Http404
 
-        if 'options' not in provider.config or not provider.config['options'].get('options_slo', False):
-            raise Exception("SLO is disabled, can't process that action")
-
         saml_config = provider.build_saml_config(organization_slug)
-
         auth = provider.build_auth(request, saml_config)
-        dscb = lambda: logout(request)
-        next = auth.process_slo(delete_session_cb=dscb)
-        request.user = AnonymousUser()
-        if not next:
-            next = get_login_url()
 
-        return self.redirect(next)
+        # If SLS is disabled do not log them out, but continue the SLS logout flow
+        # We do not sync the SLS enabled status to providers, so a user may
+        # enter the SLS flow without it being enabled on our side.
+        if not provider.config.get('options', {}).get('options_slo', False):
+            redirect_to = auth.process_slo()
+            return self.redirect(redirect_to)
+
+        def force_logout():
+            request.user.refresh_session_nonce()
+            request.user.save()
+            logout(request)
+
+        redirect_to = auth.process_slo(delete_session_cb=force_logout)
+
+        if not redirect_to:
+            redirect_to = get_login_url()
+
+        return self.redirect(redirect_to)
 
 
 class SAML2MetadataView(AuthView):
