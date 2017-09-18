@@ -14,8 +14,6 @@ from django.utils.translation import ugettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt
 from six.moves.urllib.parse import urlparse
 
-from onelogin.saml2.constants import OneLogin_Saml2_Constants
-
 from sentry import options
 from sentry.auth import Provider, AuthView
 from sentry.auth.view import ConfigureView
@@ -23,6 +21,24 @@ from sentry.auth.exceptions import IdentityNotValid
 from sentry.models import (AuthProvider, Organization, OrganizationStatus, User, UserEmail)
 from sentry.utils.http import absolute_uri
 from sentry.utils.auth import login, get_login_redirect, get_login_url
+
+
+try:
+    from onelogin.saml2.auth import OneLogin_Saml2_Auth, OneLogin_Saml2_Settings
+    from onelogin.saml2.constants import OneLogin_Saml2_Constants
+    HAS_SAML2 = True
+except ImportError:
+    HAS_SAML2 = False
+
+    def OneLogin_Saml2_Auth(*args, **kwargs):
+        raise NotImplementedError('Missing SAML libraries')
+
+    def OneLogin_Saml2_Settings(*args, **kwargs):
+        raise NotImplementedError('Missing SAML libraries')
+
+    class OneLogin_Saml2_Constants(object):
+        def __getattr__(self):
+            return None
 
 
 IDENTIFIER_CHOICES = (
@@ -65,18 +81,6 @@ DIGEST_ALGORITHM_CHOICES = (
     (OneLogin_Saml2_Constants.SHA512, 'SHA512'),
     (OneLogin_Saml2_Constants.SHA1, 'SHA1')
 )
-
-try:
-    from onelogin.saml2.auth import OneLogin_Saml2_Auth, OneLogin_Saml2_Settings
-    HAS_SAML2 = True
-except ImportError:
-    HAS_SAML2 = False
-
-    def OneLogin_Saml2_Auth(*args, **kwargs):
-        raise NotImplementedError('Missing SAML libraries')
-
-    def OneLogin_Saml2_Settings(*args, **kwargs):
-        raise NotImplementedError('Missing SAML libraries')
 
 
 def get_provider(organization_slug):
