@@ -180,7 +180,7 @@ class SAML2ConfigureView(ConfigureView):
 
     def dispatch(self, request, organization, auth_provider):
         if self.saml_form_cls is None or self.advanced_form_cls is None:
-            raise NotImplementedError('Custom forms may be defined by the extended class')
+            raise NotImplementedError('Custom forms must be defined by the extended class')
 
         if request.method == 'POST':
             data = request.POST
