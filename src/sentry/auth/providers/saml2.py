@@ -6,7 +6,7 @@ from django.core.urlresolvers import reverse
 from django.contrib.auth import logout
 from django.http import (
     HttpResponse, HttpResponseRedirect, HttpResponseServerError,
-    Http404, HttpResponseNotAllowed
+    HttpResponseNotAllowed, Http404
 )
 from django.utils.decorators import method_decorator
 from django.utils.translation import ugettext_lazy as _
