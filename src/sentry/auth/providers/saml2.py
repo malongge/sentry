@@ -89,35 +89,77 @@ def get_provider(organization_slug):
         return None
 
     try:
-        auth_provider = AuthProvider.objects.get(organization=organization)
-        return auth_provider.get_provider()
+        return AuthProvider.objects.get(organization=organization).get_provider()
     except AuthProvider.DoesNotExist:
         return None
 
 
 class OptionsForm(forms.Form):
-    options_identifier = forms.ChoiceField(label="Identifier attribute", choices=IDENTIFIER_CHOICES, help_text=_('Select what field will be used in order to match the user account.'))
-    options_jit = forms.BooleanField(label="Just-in-time Provisioning", required=False, help_text=_('Auto-provisioning. If user not exists, Sentry will create a new user account with the data provided by the IdP.'))
-    options_slo = forms.BooleanField(label="Single Logout Service", required=False, help_text=_('Enable/disable Single Log Out. SLO  is a complex functionality, the most common SLO implementation is based on front-channel (redirections), sometimes if the SLO workflow fails a user can be blocked in an unhandled view. If the admin does not controls the set of apps involved in the SLO process maybe is better to disable this functionality (can carry more problems than benefits).'))
+    options_identifier = forms.ChoiceField(
+        label="Identifier attribute",
+        choices=IDENTIFIER_CHOICES,
+        help_text=_('Select what field will be used in order to match the user account.')
+    )
+    options_jit = forms.BooleanField(
+        label="Just-in-time Provisioning",
+        required=False,
+        help_text=_('Enable/disable Auto-provisioning. If user not exists, '
+                    'Sentry will create a new user account with the data '
+                    'provided by the IdP when they first login.')
+    )
+    options_slo = forms.BooleanField(
+        label="Single Logout Service",
+        required=False,
+        help_text=_('Enable/disable Single Log Out. When a user logs out of '
+                    'their IdP they will also be logged out from Sentry.')
+    )
 
     def clean(self):
         super(OptionsForm, self).clean()
 
         options_identifier = self.data.get('options_identifier', None)
-        if (options_identifier is None or options_identifier == 'email') and not self.data.get('attribute_mapping_email', None):
-            self._errors["options_identifier"] = [_("Email selected as identifier but its mapping not provided")]
-            del self.cleaned_data["options_identifier"]
-        elif (options_identifier == 'username') and not self.data.get('attribute_mapping_username', None):
-            self._errors["options_identifier"] = [_("Username selected as identifier but its mapping not provided")]
-            del self.cleaned_data["options_identifier"]
 
-        if self.data.get('options_jit', None) and not (self.data.get('attribute_mapping_email', None) and self.data.get('attribute_mapping_username', None) and self.data.get('attribute_mapping_displayname', None)):
-            self._errors["options_jit"] = [_("JIT enabled but required attribute mapping not provided")]
+        invalid_email_identifier = (
+            (options_identifier is None or options_identifier == 'email') and
+            not self.data.get('attribute_mapping_email', None)
+        )
+        invalid_username_identifer = (
+            options_identifier == 'username' and
+            not self.data.get('attribute_mapping_username', None)
+        )
+        invalid_jit = (
+            self.data.get('options_jit', None) and
+            not (
+                self.data.get('attribute_mapping_email', None) and
+                self.data.get('attribute_mapping_username', None) and
+                self.data.get('attribute_mapping_displayname', None)
+            )
+        )
+        invalid_slo = (
+            self.data.get('options_slo', None)
+            and not self.data.get('idp_slo_url', None)
+        )
+
+        if invalid_email_identifier:
+            del self.cleaned_data["options_identifier"]
+            self._errors["options_identifier"] = [
+                _("Email selected as identifier but its mapping not provided")
+            ]
+        elif invalid_username_identifer:
+            del self.cleaned_data["options_identifier"]
+            self._errors["options_identifier"] = [
+                _("Username selected as identifier but its mapping not provided")
+            ]
+        if invalid_jit:
             del self.cleaned_data["options_jit"]
-
-        if self.data.get('options_slo', None) and not self.data.get('idp_slo_url', None):
-            self._errors["options_slo"] = [_("SLO enabled but Single Logout Service URL not provided")]
+            self._errors["options_jit"] = [
+                _("JIT enabled but required attribute mapping not provided")
+            ]
+        if invalid_slo:
             del self.cleaned_data["options_slo"]
+            self._errors["options_slo"] = [
+                _("SLO enabled but Single Logout Service URL not provided")
+            ]
 
         return self.cleaned_data
 
@@ -153,13 +195,18 @@ class SAML2ConfigureView(ConfigureView):
                 auth_provider.config['options'] = options_data
                 valid_forms += 1
             if attr_mapping_form.is_valid():
-                attribute_mapping_data = SAML2Provider.extract_attribute_mapping_from_form(attr_mapping_form)
+                attribute_mapping_data = SAML2Provider.extract_attribute_mapping_from_form(
+                    attr_mapping_form
+                )
                 auth_provider.config['attribute_mapping'] = attribute_mapping_data
                 valid_forms += 1
             if advanced_form.is_valid():
-                advanced_settings_data = SAML2Provider.extract_advanced_settings_from_form(advanced_form)
+                advanced_settings_data = SAML2Provider.extract_advanced_settings_from_form(
+                    advanced_form
+                )
                 auth_provider.config['advanced_settings'] = advanced_settings_data
                 valid_forms += 1
+
             if valid_forms == 4:
                 auth_provider.save()
         else:
@@ -175,9 +222,16 @@ class SAML2ConfigureView(ConfigureView):
             advanced_data = auth_provider.config.get('advanced_settings', None)
             advanced_form = self.advanced_form_cls(initial=advanced_data)
 
-        return self.display_configure_view(organization, saml_form, options_form, attr_mapping_form, advanced_form)
+        return self.display_configure_view(
+            organization,
+            saml_form,
+            options_form,
+            attr_mapping_form,
+            advanced_form
+        )
 
-    def display_configure_view(self, organization, saml_form, options_form, attr_mapping_form, advanced_form):
+    def display_configure_view(self, organization, saml_form, options_form,
+                               attr_mapping_form, advanced_form):
         raise NotImplementedError('Display Configure View not implemented!')
 
 
@@ -266,7 +320,8 @@ class SAML2ACSView(AuthView):
                 return HttpResponseRedirect(get_login_redirect(request))
             else:
                 return HttpResponseServerError(
-                    "Found several accounts related with %s = %s on this organization" % (options_identifier, identifier_value)
+                    "Found several accounts related with %s = %s on this organization" % (
+                        options_identifier, identifier_value)
                 )
         else:
             options_jit = False
@@ -275,7 +330,8 @@ class SAML2ACSView(AuthView):
 
             if not options_jit:
                 return HttpResponseServerError(
-                    "The user with %s = %s is not related with this organization" % (options_identifier, identifier_value)
+                    "The user with %s = %s is not related with this organization" % (
+                        options_identifier, identifier_value)
                 )
             else:
                 return HttpResponseServerError(
@@ -462,93 +518,104 @@ class SAML2Provider(Provider):
 
     @staticmethod
     def extract_idp_data_from_form(form):
-        idp_data = {
-            'idp_entityid': form.cleaned_data.get('idp_entityid', None),
-            'idp_sso_url': form.cleaned_data.get('idp_sso_url', None),
-            'idp_x509cert': form.cleaned_data.get('idp_x509cert', None),
-            'idp_slo_url': form.cleaned_data.get('idp_slo_url', None)
+        d = form.cleaned_data
+
+        return {
+            'idp_entityid': d.get('idp_entityid', None),
+            'idp_sso_url': d.get('idp_sso_url', None),
+            'idp_x509cert': d.get('idp_x509cert', None),
+            'idp_slo_url': d.get('idp_slo_url', None)
         }
-        return idp_data
 
     @staticmethod
     def extract_options_data_from_form(form):
-        options_data = {
-            'options_identifier': form.cleaned_data.get('options_identifier', 'email'),
-            'options_jit': form.cleaned_data.get('options_jit', False),
-            'options_slo': form.cleaned_data.get('options_slo', False)
+        d = form.cleaned_data
+
+        return {
+            'options_identifier': d.get('options_identifier', 'email'),
+            'options_jit': d.get('options_jit', False),
+            'options_slo': d.get('options_slo', False)
         }
-        return options_data
 
     @staticmethod
     def extract_attribute_mapping_from_form(form):
-        attribute_mapping_data = {
-            'attribute_mapping_email': form.cleaned_data.get('attribute_mapping_email', None),
-            'attribute_mapping_username': form.cleaned_data.get('attribute_mapping_username', None),
-            'attribute_mapping_displayname': form.cleaned_data.get('attribute_mapping_displayname', None)
+        d = form.cleaned_data
+
+        return {
+            'attribute_mapping_email': d.get('attribute_mapping_email', None),
+            'attribute_mapping_username': d.get('attribute_mapping_username', None),
+            'attribute_mapping_displayname': d.get('attribute_mapping_displayname', None)
         }
-        return attribute_mapping_data
 
     @staticmethod
     def extract_advanced_settings_from_form(form):
-        advanced_settings_data = {
-            'advanced_spentityid': form.cleaned_data.get('advanced_spentityid', None),
-            'advanced_nameidformat': form.cleaned_data.get('advanced_nameidformat', OneLogin_Saml2_Constants.NAMEID_UNSPECIFIED),
-            'advanced_requestedauthncontext': form.cleaned_data.get('advanced_requestedauthncontext', False),
-            'advanced_authn_request_signed': form.cleaned_data.get('advanced_authn_request_signed', False),
-            'advanced_logout_request_signed': form.cleaned_data.get('advanced_logout_request_signed', False),
-            'advanced_logout_response_signed': form.cleaned_data.get('advanced_logout_response_signed', False),
-            'advanced_metadata_signed': form.cleaned_data.get('advanced_metadata_signed', False),
-            'advanced_want_message_signed': form.cleaned_data.get('advanced_want_message_signed', False),
-            'advanced_want_assertion_signed': form.cleaned_data.get('advanced_want_assertion_signed', False),
-            'advanced_want_assertion_encrypted': form.cleaned_data.get('advanced_want_assertion_encrypted', False),
-            'advanced_signaturealgorithm': form.cleaned_data.get('advanced_signaturealgorithm', OneLogin_Saml2_Constants.RSA_SHA256),
-            'advanced_digestalgorithm': form.cleaned_data.get('advanced_digestalgorithm', OneLogin_Saml2_Constants.SHA256),
-            'advanced_sp_x509cert': form.cleaned_data.get('advanced_sp_x509cert', None),
-            'advanced_sp_privatekey': form.cleaned_data.get('advanced_sp_privatekey', None),
+        d = form.cleaned_data
+
+        return {
+            'advanced_spentityid': d.get('advanced_spentityid', None),
+            'advanced_nameidformat': d.get('advanced_nameidformat', OneLogin_Saml2_Constants.NAMEID_UNSPECIFIED),
+            'advanced_requestedauthncontext': d.get('advanced_requestedauthncontext', False),
+            'advanced_authn_request_signed': d.get('advanced_authn_request_signed', False),
+            'advanced_logout_request_signed': d.get('advanced_logout_request_signed', False),
+            'advanced_logout_response_signed': d.get('advanced_logout_response_signed', False),
+            'advanced_metadata_signed': d.get('advanced_metadata_signed', False),
+            'advanced_want_message_signed': d.get('advanced_want_message_signed', False),
+            'advanced_want_assertion_signed': d.get('advanced_want_assertion_signed', False),
+            'advanced_want_assertion_encrypted': d.get('advanced_want_assertion_encrypted', False),
+            'advanced_signaturealgorithm': d.get('advanced_signaturealgorithm', OneLogin_Saml2_Constants.RSA_SHA256),
+            'advanced_digestalgorithm': d.get('advanced_digestalgorithm', OneLogin_Saml2_Constants.SHA256),
+            'advanced_sp_x509cert': d.get('advanced_sp_x509cert', None),
+            'advanced_sp_privatekey': d.get('advanced_sp_privatekey', None),
         }
-        return advanced_settings_data
 
     @staticmethod
     def extract_parsed_data_from_idp_data(data):
+        if 'idp' not in data:
+            return {}
+
         parsed_data = {}
-        if 'idp' in data:
-            if 'idp_entityid' in data['idp']:
-                parsed_data['entityId'] = data['idp']['idp_entityid']
-            if 'idp_sso_url' in data['idp']:
-                parsed_data['singleSignOnService'] = {}
-                parsed_data['singleSignOnService']['url'] = data['idp']['idp_sso_url']
-            if 'idp_slo_url' in data['idp']:
-                parsed_data['singleLogoutService'] = {}
-                parsed_data['singleLogoutService']['url'] = data['idp']['idp_slo_url']
-            if 'idp_x509cert' in data['idp']:
-                parsed_data['x509cert'] = data['idp']['idp_x509cert']
+
+        if 'idp_entityid' in data['idp']:
+            parsed_data['entityId'] = data['idp']['idp_entityid']
+        if 'idp_sso_url' in data['idp']:
+            parsed_data['singleSignOnService'] = {'url': data['idp']['idp_sso_url']}
+        if 'idp_slo_url' in data['idp']:
+            parsed_data['singleLogoutService'] = {'url': data['idp']['idp_slo_url']}
+        if 'idp_x509cert' in data['idp']:
+            parsed_data['x509cert'] = data['idp']['idp_x509cert']
+
         return parsed_data
 
     @staticmethod
     def extract_parsed_data_from_advanced_data(data):
-        parsed_data = {}
-        if 'advanced_settings' in data:
-            parsed_data['spEntityId'] = data['advanced_settings'].get('advanced_spentityid', None)
-            parsed_data['NameIDFormat'] = data['advanced_settings'].get('advanced_nameidformat', OneLogin_Saml2_Constants.NAMEID_UNSPECIFIED)
-            parsed_data['requestedAuthnContext'] = data['advanced_settings'].get('advanced_requestedauthncontext', False)
-            parsed_data['authnRequestsSigned'] = data['advanced_settings'].get('advanced_authn_request_signed', False)
-            parsed_data['logoutRequestSigned'] = data['advanced_settings'].get('advanced_logout_request_signed', False)
-            parsed_data['logoutResponseSigned'] = data['advanced_settings'].get('advanced_logout_response_signed', False)
-            parsed_data['signMetadata'] = data['advanced_settings'].get('advanced_metadata_signed', False)
-            parsed_data['wantMessagesSigned'] = data['advanced_settings'].get('advanced_want_message_signed', False)
-            parsed_data['wantAssertionsSigned'] = data['advanced_settings'].get('advanced_want_assertion_signed', False)
-            parsed_data['wantAssertionsEncrypted'] = data['advanced_settings'].get('advanced_want_assertion_encrypted', False)
-            parsed_data['signatureAlgorithm'] = data['advanced_settings'].get('advanced_signaturealgorithm', OneLogin_Saml2_Constants.RSA_SHA256)
-            parsed_data['digestAlgorithm'] = data['advanced_settings'].get('advanced_digestalgorithm', OneLogin_Saml2_Constants.SHA256)
-            if data['advanced_settings'].get('advanced_sp_x509cert', None):
-                parsed_data['spx509cert'] = data['advanced_settings']['advanced_sp_x509cert']
-            if data['advanced_settings'].get('advanced_sp_privatekey', None):
-                parsed_data['spPrivateKey'] = data['advanced_settings']['advanced_sp_privatekey']
-            parsed_data['wantNameId'] = False
+        if 'advanced_settings' not in data:
+            return {}
+
+        d = data['advanced_settings']
+
+        parsed_data = {
+            'spEntityId': d.get('advanced_spentityid', None),
+            'NameIDFormat': d.get('advanced_nameidformat', OneLogin_Saml2_Constants.NAMEID_UNSPECIFIED),
+            'requestedAuthnContext': d.get('advanced_requestedauthncontext', False),
+            'authnRequestsSigned': d.get('advanced_authn_request_signed', False),
+            'logoutRequestSigned': d.get('advanced_logout_request_signed', False),
+            'logoutResponseSigned': d.get('advanced_logout_response_signed', False),
+            'signMetadata': d.get('advanced_metadata_signed', False),
+            'wantMessagesSigned': d.get('advanced_want_message_signed', False),
+            'wantAssertionsSigned': d.get('advanced_want_assertion_signed', False),
+            'wantAssertionsEncrypted': d.get('advanced_want_assertion_encrypted', False),
+            'signatureAlgorithm': d.get('advanced_signaturealgorithm', OneLogin_Saml2_Constants.RSA_SHA256),
+            'digestAlgorithm': d.get('advanced_digestalgorithm', OneLogin_Saml2_Constants.SHA256),
+            'wantNameId': False,
+        }
+
+        if d.get('advanced_sp_x509cert', None):
+            parsed_data['spx509cert'] = d['advanced_sp_x509cert']
+        if d.get('advanced_sp_privatekey', None):
+            parsed_data['spPrivateKey'] = d['advanced_sp_privatekey']
 
         return parsed_data
 
     def refresh_identity(self, auth_identity):
         # Nothing to refresh
         return
-
