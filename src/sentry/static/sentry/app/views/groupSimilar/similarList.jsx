@@ -6,7 +6,9 @@ import {t} from '../../locale';
 import Pagination from '../../components/pagination';
 import QueryCount from '../../components/queryCount';
 import SimilarItem from './similarItem';
+import SimilarSpectrum from '../../components/similarSpectrum';
 import SimilarToolbar from './similarToolbar';
+import SpreadLayout from '../../components/spreadLayout';
 
 const SimilarItemPropType = PropTypes.shape({
   issue: Group,
@@ -18,6 +20,7 @@ const SimilarItemPropType = PropTypes.shape({
 const SimilarList = React.createClass({
   propTypes: {
     orgId: PropTypes.string.isRequired,
+    groupId: PropTypes.string.isRequired,
     projectId: PropTypes.string.isRequired,
     onMerge: PropTypes.func.isRequired,
     pageLinks: PropTypes.string,
@@ -53,7 +56,15 @@ const SimilarList = React.createClass({
   },
 
   render() {
-    let {orgId, projectId, items, filteredItems, pageLinks, onMerge} = this.props;
+    let {
+      orgId,
+      groupId,
+      projectId,
+      items,
+      filteredItems,
+      pageLinks,
+      onMerge
+    } = this.props;
     let hasHiddenItems = !!filteredItems.length;
     let hasResults = items.length > 0 || hasHiddenItems;
     let itemsWithFiltered = items.concat(
@@ -70,10 +81,13 @@ const SimilarList = React.createClass({
 
     return (
       <div className="similar-list-container">
-        <h2>
-          <span>{t('Similar Issues')}</span>
-          <QueryCount count={items.length + filteredItems.length} />
-        </h2>
+        <SpreadLayout className="similar-list-header">
+          <h2>
+            <span>{t('Similar Issues')}</span>
+            <QueryCount count={items.length + filteredItems.length} />
+          </h2>
+          <SimilarSpectrum />
+        </SpreadLayout>
         <SimilarToolbar onMerge={onMerge} />
 
         <div className="similar-list">
@@ -82,6 +96,7 @@ const SimilarList = React.createClass({
               key={item.issue.id}
               orgId={orgId}
               projectId={projectId}
+              groupId={groupId}
               {...item}
             />
           ))}
