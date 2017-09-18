@@ -281,10 +281,7 @@ class SAML2ACSView(AuthView):
             email = self.retrieve_email(attributes, nameid, provider.config)
             identifier_value = email
 
-            # Filter users based on the emails provided in the commits
-            user_emails = list(
-                UserEmail.objects.filter(email__iexact=email, is_verified=True).order_by('id')
-            )
+            user_emails = list(UserEmail.objects.filter(email__iexact=email).order_by('id'))
 
             if user_emails:
                 users = list(
